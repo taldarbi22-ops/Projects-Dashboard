@@ -6,6 +6,13 @@ import datetime
 # --- הגדרות קבועות ---
 FILE_NAME = 'projects_tracker.csv'
 
+# --- קבלת הנתיב של התיקייה הנוכחית שבה נמצא הקוד ---
+current_dir = os.path.dirname(os.path.abspath(__file__))
+
+# --- חיבור הנתיב עם שם הקובץ ---
+FILE_NAME = os.path.join(current_dir, 'projects_tracker.csv')
+
+
 # רשימת השלבים המקצועית
 STAGES = [
     "1. ייזום ואפיון צרכים",
