@@ -1,0 +1,145 @@
+import streamlit as st
+import pandas as pd
+import os
+import datetime
+
+# --- הגדרות קבועות ---
+FILE_NAME = 'projects_tracker.csv'
+
+# רשימת השלבים המקצועית
+STAGES = [
+    "1. ייזום ואפיון צרכים",
+    "2. תכנון הנדסי ותשתיות",
+    "3. גיבוש אומדן תקציבי",
+    "4. אישור תקציבי",
+    "5. סקר שוק ובחינה טכנית",
+    "6. ביצוע רכש",
+    "7. בקרה ומעקב אספקה",
+    "8. קליטה, רישום ומסירה"
+]
+
+# --- פונקציות לניהול נתונים ---
+def load_data():
+    if os.path.exists(FILE_NAME):
+        return pd.read_csv(FILE_NAME)
+    else:
+        # יצירת מבנה נתונים ראשוני אם הקובץ לא קיים
+        return pd.DataFrame(columns=["שם הפרויקט", "סטטוס", "תאריך עדכון", "הערות", "התקדמות (%)"])
+
+def save_data(df):
+    df.to_csv(FILE_NAME, index=False)
+
+# --- ממשק המשתמש ---
+st.set_page_config(page_title="ניהול פרויקטים - הנדסה רפואית", layout="wide", page_icon="🏥")
+
+# כותרת ראשית
+st.title("🏥 דשבורד מעקב פרויקטים - הנדסה רפואית")
+st.markdown("---")
+
+# טעינת נתונים
+df = load_data()
+
+# --- סרגל צד (Sidebar) לפעולות ---
+st.sidebar.header("ניהול פרויקט")
+action = st.sidebar.radio("בחר פעולה:", ["הוסף פרויקט חדש", "עדכן סטטוס פרויקט", "מחק פרויקט"])
+
+if action == "הוסף פרויקט חדש":
+    st.sidebar.subheader("פתיחת פרויקט חדש")
+    new_project_name = st.sidebar.text_input("שם הפרויקט")
+    new_project_notes = st.sidebar.text_area("הערות כלליות")
+    
+    if st.sidebar.button("הוסף פרויקט"):
+        if new_project_name and new_project_name not in df["שם הפרויקט"].values:
+            new_row = {
+                "שם הפרויקט": new_project_name,
+                "סטטוס": STAGES[0],
+                "תאריך עדכון": datetime.date.today(),
+                "הערות": new_project_notes,
+                "התקדמות (%)": 12.5
+            }
+            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+            save_data(df)
+            st.sidebar.success(f"הפרויקט '{new_project_name}' נוסף בהצלחה!")
+            st.rerun()
+        elif new_project_name in df["שם הפרויקט"].values:
+            st.sidebar.error("שם הפרויקט כבר קיים במערכת.")
+        else:
+            st.sidebar.warning("נא להזין שם פרויקט.")
+
+elif action == "עדכן סטטוס פרויקט":
+    st.sidebar.subheader("עדכון פרויקט קיים")
+    if not df.empty:
+        project_to_update = st.sidebar.selectbox("בחר פרויקט לעדכון", df["שם הפרויקט"].unique())
+        
+        # שליפת הנתונים הנוכחיים
+        current_data = df[df["שם הפרויקט"] == project_to_update].iloc[0]
+        current_stage_index = STAGES.index(current_data["סטטוס"])
+        
+        new_status = st.sidebar.selectbox("סטטוס חדש", STAGES, index=current_stage_index)
+        updated_notes = st.sidebar.text_area("עדכון הערות", value=current_data["הערות"])
+        
+        if st.sidebar.button("שמור שינויים"):
+            # חישוב אחוז התקדמות
+            stage_index = STAGES.index(new_status)
+            progress_pct = ((stage_index + 1) / len(STAGES)) * 100
+            
+            # עדכון הדאטה פריים
+            df.loc[df["שם הפרויקט"] == project_to_update, "סטטוס"] = new_status
+            df.loc[df["שם הפרויקט"] == project_to_update, "הערות"] = updated_notes
+            df.loc[df["שם הפרויקט"] == project_to_update, "תאריך עדכון"] = datetime.date.today()
+            df.loc[df["שם הפרויקט"] == project_to_update, "התקדמות (%)"] = progress_pct
+            
+            save_data(df)
+            st.sidebar.success("הפרויקט עודכן בהצלחה!")
+            st.rerun()
+    else:
+        st.sidebar.info("אין פרויקטים להצגה.")
+
+elif action == "מחק פרויקט":
+    st.sidebar.subheader("מחיקת פרויקט")
+    if not df.empty:
+        project_to_delete = st.sidebar.selectbox("בחר פרויקט למחיקה", df["שם הפרויקט"].unique())
+        if st.sidebar.button("מחק לצמיתות"):
+            df = df[df["שם הפרויקט"] != project_to_delete]
+            save_data(df)
+            st.sidebar.success("הפרויקט נמחק.")
+            st.rerun()
+
+# --- תצוגת הדשבורד המרכזית ---
+
+# 1. מדדים כלליים (Metrics)
+col1, col2, col3 = st.columns(3)
+col1.metric("סה\"כ פרויקטים", len(df))
+completed_projects = len(df[df["סטטוס"] == STAGES[-1]])
+col2.metric("פרויקטים שהושלמו", completed_projects)
+pending_projects = len(df) - completed_projects
+col3.metric("פרויקטים בתהליך", pending_projects)
+
+st.markdown("---")
+
+# 2. תצוגה גרפית של התפלגות הסטטוסים
+if not df.empty:
+    st.subheader("📊 סטטוס פרויקטים פעילים")
+    status_counts = df["סטטוס"].value_counts().reindex(STAGES, fill_value=0)
+    st.bar_chart(status_counts)
+
+# 3. טבלת פרויקטים מפורטת
+st.subheader("📋 רשימת הפרויקטים")
+
+# הוספת בר התקדמות ויזואלי לטבלה
+if not df.empty:
+    # יצירת טבלה להצגה עם עיצוב
+    display_df = df.copy()
+    
+    # הצגת הפרויקטים ככרטיסיות או טבלה אינטראקטיבית
+    for index, row in display_df.iterrows():
+        with st.expander(f"🔹 {row['שם הפרויקט']} | {row['סטטוס']}"):
+            col_a, col_b = st.columns([3, 1])
+            with col_a:
+                st.write(f"**הערות:** {row['הערות']}")
+                st.write(f"**עודכן לאחרונה:** {row['תאריך עדכון']}")
+            with col_b:
+                st.progress(int(row['התקדמות (%)']))
+                st.caption(f"{int(row['התקדמות (%)'])}% הושלמו")
+else:
+    st.info("עדיין לא הוזנו פרויקטים. השתמש בתפריט הצדדי כדי להתחיל.")
